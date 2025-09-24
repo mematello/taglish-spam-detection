@@ -1,0 +1,46 @@
+# Web UI Dependencies for Multi-Model Spam Detection System
+# Install with: pip install -r requirements.txt
+
+# Core web framework
+streamlit>=1.28.0
+
+# Data manipulation and analysis
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Visualization libraries
+plotly>=5.15.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+wordcloud>=1.9.0
+
+# Machine learning frameworks
+scikit-learn>=1.0.0
+tensorflow>=2.8.0
+torch>=1.12.0
+transformers>=4.20.0
+
+# Model serialization
+joblib>=1.1.0
+pickle-mixin>=1.0.2
+
+# Text processing
+nltk>=3.7
+spacy>=3.4.0
+
+# Utilities
+Pillow>=8.0.0
+requests>=2.28.0
+
+# Optional: For better performance
+numba>=0.56.0
+
+# Development dependencies (optional)
+pytest>=7.0.0
+black>=22.0.0
+flake8>=4.0.0
+
+# Additional Streamlit components (optional)
+streamlit-option-menu>=0.3.0
+streamlit-aggrid>=0.3.0
+streamlit-lottie>=0.0.3

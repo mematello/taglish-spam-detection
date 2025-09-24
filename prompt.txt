@@ -1,0 +1,97 @@
+Here’s a **clean and structured prompt** you can give to Claude (or any coding assistant) so it clearly understands the project setup and what needs to be built:
+
+---
+
+**Prompt for Claude:**
+
+You are helping me build a **Web UI** for my `taglish-spam-detection` project.
+Below is the complete project structure and requirements.
+
+---
+
+### 📂 Project Folder Structure
+
+The root folder is **`taglish-spam-detection`** and currently contains:
+
+```
+taglish-spam-detection/
+│
+├─ dataset/                  # Dataset files (e.g. final_spam_ham_dataset.csv)
+│
+├─ models/                   # All models are inside here
+│   ├─ lstm/
+│   │   ├─ train_model.py    # trains LSTM model and saves .pkl
+│   │   └─ test_model.py     # loads saved model and runs predictions
+│   │
+│   ├─ logistic_regression/
+│   │   ├─ train_model.py
+│   │   └─ test_model.py
+│   │
+│   └─ xlm/                  # (XLM-Roberta based) – still being finalized
+│       ├─ train_model.py
+│       └─ test_model.py
+│
+├─ web_ui/                   # This is where the Web App will live
+│
+├─ venv/                      # Python virtual environment
+│
+├─ .gitignore
+├─ README.md
+└─ requirements.txt
+```
+
+---
+
+### 💡 Current Models
+
+* **LSTM** (already working)
+* **TFIDF + Logistic Regression** (working)
+* **XLM-Roberta** (in progress)
+
+Each model has:
+
+1. `train_model.py` – trains the model and saves a `.pkl` file inside the same model folder.
+2. `test_model.py` – loads the trained `.pkl` file and predicts spam/ham for a given text.
+
+---
+
+### 🌐 Task: Build a Web UI
+
+Create a **single web application** (inside `web_ui/`) where the user can:
+
+1. **Upload or type a message** to classify as spam/ham.
+2. **Select a model** (dropdown or buttons):
+
+   * LSTM
+   * TFIDF + Logistic Regression
+   * XLM-Roberta
+3. View the **prediction result** and confidence score.
+4. (Optional) Allow uploading a CSV of multiple messages to batch classify.
+
+---
+
+### 🔑 Technical Requirements
+
+* Use **Streamlit** or **Flask** (you decide, but Streamlit is simpler).
+* The app should dynamically load the correct `.pkl` file depending on the chosen model.
+* Show model information (e.g., accuracy, training date) if available.
+* Make sure the UI is clean, responsive, and easy to use.
+
+---
+
+### 📝 Output Expected
+
+1. Inside `web_ui/`, create the main app file (e.g., `app.py` for Flask or `streamlit_app.py` for Streamlit).
+2. Provide instructions on:
+
+   * How to install requirements (`requirements.txt`).
+   * How to run the web UI.
+   * How to add new models in the future.
+3. Example of how the LSTM model is loaded (as a reference) and used for predictions.
+
+---
+
+**Goal:**
+Deliver a fully working web interface that allows switching between the **LSTM**, **Logistic Regression**, and **XLM-Roberta** models for Taglish spam detection.
+
+---
