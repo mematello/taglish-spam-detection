@@ -1,0 +1,122 @@
+when running the app.py, it successfully load all the models
+
+log:
+
+A-224 (PC13)@A224-PC13 MSYS ~/Desktop/taglish-spam-detection/web_ui (web-ui)
+$ python app.py
+🚀 Initializing models...
+✅ Logistic Regression model loaded successfully
+2025-09-30 17:27:26.667598: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:27:29.703888: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:27:31.361282: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+WARNING:absl:Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+✅ LSTM model loaded successfully
+✅ XLM-RoBERTa model loaded successfully
+✅ All models initialized!
+
+🌐 Starting Flask Web UI...
+🔗 Access the web interface at: http://127.0.0.1:5000
+Press Ctrl+C to stop the server
+
+ * Serving Flask app 'app'
+ * Debug mode: on
+INFO:werkzeug:WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.2.2.204:5000
+INFO:werkzeug:Press CTRL+C to quit
+INFO:werkzeug: * Restarting with watchdog (windowsapi)
+🚀 Initializing models...
+✅ Logistic Regression model loaded successfully
+2025-09-30 17:27:49.579628: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:27:52.677982: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:27:54.312315: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+WARNING:absl:Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+✅ LSTM model loaded successfully
+✅ XLM-RoBERTa model loaded successfully
+✅ All models initialized!
+
+🌐 Starting Flask Web UI...
+🔗 Access the web interface at: http://127.0.0.1:5000
+Press Ctrl+C to stop the server
+
+WARNING:werkzeug: * Debugger is active!
+INFO:werkzeug: * Debugger PIN: 597-498-311
+INFO:werkzeug:10.2.2.204 - - [30/Sep/2025 17:28:06] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:10.2.2.204 - - [30/Sep/2025 17:28:07] "GET /favicon.ico HTTP/1.1" 404 -
+INFO:werkzeug:10.2.2.204 - - [30/Sep/2025 17:28:13] "POST /predict HTTP/1.1" 200 -
+INFO:werkzeug: * Detected change in 'C:\\Users\\A-224 (PC1)\\Desktop\\taglish-spam-detection\\web_ui\\app.py', reloading
+INFO:werkzeug: * Detected change in 'C:\\Users\\A-224 (PC1)\\Desktop\\taglish-spam-detection\\web_ui\\app.py', reloading
+INFO:werkzeug: * Restarting with watchdog (windowsapi)
+🚀 Initializing models...
+✅ Logistic Regression model loaded successfully
+2025-09-30 17:29:27.711953: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:29:30.524196: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-09-30 17:29:32.197065: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+WARNING:absl:Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+✅ LSTM model loaded successfully
+✅ XLM-RoBERTa model loaded successfully
+✅ All models initialized!
+
+🌐 Starting Flask Web UI...
+🔗 Access the web interface at: http://127.0.0.1:5000
+Press Ctrl+C to stop the server
+
+WARNING:werkzeug: * Debugger is active!
+INFO:werkzeug: * Debugger PIN: 597-498-311
+
+
+now the problem is that, the lstm always result to ham and it is very confident showing always high probability for every spam messages
+
+for the xlm roberta
+it shows unhashable type: `dict`
+like always, for every spam messages
+
+look at this:
+
+Certainly. The image displays a web application for Taglish Spam Detection that compares the performance of three different machine learning models: Logistic Regression, LSTM (Long Short-Term Memory), and XLM-RoBERTa.
+
+Here is a breakdown of what the application shows:
+
+1. Spam Detection Interface
+Purpose: The application is designed to check messages in English & Filipino (Tagalog, which when mixed with English is often called Taglish) for spam.
+
+Input: There is a text box where a message can be entered. The example message shown is:
+
+"Hi boss, pa-send [REDACREDTED] load 200 sa 09123456789, emergency [REDACREDTED]" (The sensitive/personal parts have been redacted for privacy).
+
+Action: A "Check for Spam" button is available to process the entered message.
+
+2. Detection Results
+The application shows the results of classifying the example message based on the three models:
+
+Model	Classification	Confidence	Spam Probability	Ham Probability	Notes
+Logistic Regression	SPAM	73.3%	73.26%	26.74%	This model is confident the message is spam.
+LSTM	HAM	100.0%	0.03%	99.97%	This model is completely confident the message is not spam (Ham).
+XLM-RoBERTa	(Error)	N/A	N/A	N/A	The result shows an error: "unhashable type: 'dict'," meaning this model could not process the input for some reason.
+3. Model Performance Comparison
+A table compares the overall training performance of the models across several common metrics.
+
+Model	Description	Accuracy	Precision	Recall	F1-Score	Training Time
+Logistic Regression + TF-IDF	Traditional ML approach using TF-IDF features	97.40%	99.68%	90.41%	94.82%	∼5 seconds
+LSTM (Long Short-Term Memory)	Deep Learning RNN architecture	97.54%	96.99%	93.60%	0.00%	TBD
+XLM-RoBERTa Base	Transformer-based multilingual model	0.00%	0.00%	0.00%	0.00%	TBD
+Key Insight: The Logistic Regression + TF-IDF model has a very strong performance (high accuracy, precision, and F1-Score) and a remarkably fast training time of only ∼5 seconds, outperforming the other models in the metrics shown. The deep learning models (LSTM and XLM-RoBERTa) show some results but have several missing (TBD) or 0.00% scores, suggesting their full training or evaluation data may not be completely loaded or displayed yet.
+
+
+
+i am bothered to this:
+
+LSTM (Long Short-Term Memory)	Deep Learning RNN architecture	97.54%	96.99%	93.60%	0.00%	TBD
+XLM-RoBERTa Base	Transformer-based multilingual model	0.00%	0.00%	0.00%	0.00%	TBD
+
+since they always like that specially the xlm. i think this is becaues the model is not .pkl and i think it is becuase of model.safetensor
+
+for lstm, it is very high ham probability like always like that.
+
+now i want you to fix the app.py 
+
+
