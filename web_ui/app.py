@@ -39,11 +39,11 @@ model_metadata = {
         'recall': 0.9041,
         'f1': 0.9482,
         'training_time': '~5 seconds',
-        'description': 'Traditional ML approach using TF-IDF features'
+        'description': 'Traditional ML using TF-IDF features'
     },
     'lstm': {
         'name': 'LSTM (Long Short-Term Memory)',
-        'accuracy': 0.0,  # Will be updated when loading
+        'accuracy': 0.0,
         'precision': 0.0,
         'recall': 0.0,
         'f1': 0.0,
@@ -52,7 +52,7 @@ model_metadata = {
     },
     'xlm_roberta': {
         'name': 'XLM-RoBERTa Base',
-        'accuracy': 0.0,  # Will be updated when loading
+        'accuracy': 0.0,
         'precision': 0.0,
         'recall': 0.0,
         'f1': 0.0,
@@ -156,12 +156,15 @@ class LSTMModel:
                     'accuracy': metrics.get('accuracy', 0.0),
                     'precision': metrics.get('precision', 0.0),
                     'recall': metrics.get('recall', 0.0),
-                    'f1': metrics.get('f1', 0.0)
+                    'f1': metrics.get('f1', 0.0),
+                    'training_time': self.config.get('training_time', 'TBD')
                 })
             
             return True
         except Exception as e:
             print(f"❌ Error loading LSTM model: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def preprocess_text(self, text: str) -> str:
@@ -188,18 +191,27 @@ class LSTMModel:
             padded_sequence = pad_sequences(sequence, maxlen=max_length, padding='post')
             
             # Predict
-            prediction_proba = self.model.predict(padded_sequence, verbose=0)[0]
-            prediction = int(prediction_proba[0] > 0.5)
-            confidence = float(prediction_proba[0]) if prediction == 1 else float(1 - prediction_proba[0])
+            prediction_proba = self.model.predict(padded_sequence, verbose=0)[0][0]
+            
+            # FIXED: Proper threshold and label mapping
+            # If model outputs probability of spam class
+            spam_prob = float(prediction_proba)
+            ham_prob = float(1 - prediction_proba)
+            
+            # Determine prediction based on threshold
+            prediction = 1 if spam_prob > 0.5 else 0
+            confidence = max(spam_prob, ham_prob)
             
             return {
                 'prediction': prediction,
                 'label': 'SPAM' if prediction == 1 else 'HAM',
                 'confidence': confidence,
-                'spam_probability': float(prediction_proba[0]),
-                'ham_probability': float(1 - prediction_proba[0])
+                'spam_probability': spam_prob,
+                'ham_probability': ham_prob
             }
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {'error': str(e)}
 
 
@@ -226,18 +238,53 @@ class XLMRobertaModel:
             
             # Load label mapping
             label_mapping_path = os.path.join(model_dir, 'label_mapping.json')
-            with open(label_mapping_path, 'r') as f:
-                self.label_mapping = json.load(f)
+            if os.path.exists(label_mapping_path):
+                with open(label_mapping_path, 'r') as f:
+                    loaded_mapping = json.load(f)
+                    
+                # FIXED: Handle nested structure
+                if isinstance(loaded_mapping, dict):
+                    if 'label2id' in loaded_mapping:
+                        self.label_mapping = loaded_mapping['label2id']
+                    elif 'id2label' in loaded_mapping:
+                        # Convert id2label to label2id
+                        id2label = loaded_mapping['id2label']
+                        self.label_mapping = {v: int(k) for k, v in id2label.items()}
+                    else:
+                        self.label_mapping = loaded_mapping
+                else:
+                    self.label_mapping = loaded_mapping
+            else:
+                # Default mapping if file doesn't exist
+                self.label_mapping = {"ham": 0, "spam": 1}
+            
+            # Load config to get metrics
+            config_path = os.path.join(model_dir, 'config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    if 'metrics' in config:
+                        metrics = config['metrics']
+                        model_metadata['xlm_roberta'].update({
+                            'accuracy': metrics.get('accuracy', 0.0),
+                            'precision': metrics.get('precision', 0.0),
+                            'recall': metrics.get('recall', 0.0),
+                            'f1': metrics.get('f1', 0.0),
+                            'training_time': metrics.get('training_time', 'TBD')
+                        })
             
             # Set model to evaluation mode
             self.model.eval()
             
             self.loaded = True
             print("✅ XLM-RoBERTa model loaded successfully")
+            print(f"   Label mapping: {self.label_mapping}")
             
             return True
         except Exception as e:
             print(f"❌ Error loading XLM-RoBERTa model: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def predict(self, message: str) -> Dict[str, Any]:
@@ -268,19 +315,29 @@ class XLMRobertaModel:
             prediction = torch.argmax(probabilities).item()
             confidence = float(probabilities[prediction])
             
-            # Map prediction to label
-            reverse_mapping = {v: k for k, v in self.label_mapping.items()}
-            label = reverse_mapping.get(prediction, 'UNKNOWN')
+            # FIXED: Proper label mapping
+            # Create reverse mapping from id to label
+            id_to_label = {v: k for k, v in self.label_mapping.items()}
+            label_text = id_to_label.get(prediction, 'UNKNOWN')
+            
+            # Get spam and ham probabilities
+            spam_idx = self.label_mapping.get('spam', 1)
+            ham_idx = self.label_mapping.get('ham', 0)
+            
+            spam_prob = float(probabilities[spam_idx]) if spam_idx < len(probabilities) else 0.0
+            ham_prob = float(probabilities[ham_idx]) if ham_idx < len(probabilities) else 0.0
             
             return {
                 'prediction': prediction,
-                'label': label.upper(),
+                'label': label_text.upper(),
                 'confidence': confidence,
-                'spam_probability': float(probabilities[1]) if len(probabilities) > 1 else 0.0,
-                'ham_probability': float(probabilities[0])
+                'spam_probability': spam_prob,
+                'ham_probability': ham_prob
             }
         except Exception as e:
-            return {'error': str(e)}
+            import traceback
+            traceback.print_exc()
+            return {'error': f'Prediction error: {str(e)}'}
 
 
 def initialize_models():
@@ -302,255 +359,476 @@ def initialize_models():
     print("✅ All models initialized!")
 
 
-# HTML Template
+# Modern Apple-inspired HTML Template
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taglish Spam Detection - Model Comparison</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Taglish Spam Detection</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px 0;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .main-container {
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000000;
+            color: #f5f5f7;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 60px 20px;
         }
-        .header-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 30px;
-            margin-bottom: 30px;
+        
+        /* Header Section */
+        .header {
             text-align: center;
+            margin-bottom: 80px;
+            animation: fadeInDown 0.8s ease-out;
         }
-        .header-card h1 {
-            color: #667eea;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .header-card p {
-            color: #666;
-            font-size: 1.1rem;
-        }
-        .input-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 30px;
-            margin-bottom: 30px;
-        }
-        .model-card {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 25px;
+        
+        .header h1 {
+            font-size: 64px;
+            font-weight: 700;
+            letter-spacing: -2px;
             margin-bottom: 20px;
-            transition: transform 0.3s ease;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
+        
+        .header p {
+            font-size: 21px;
+            color: #a1a1a6;
+            font-weight: 400;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Input Section */
+        .input-section {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 48px;
+            margin-bottom: 60px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+        
+        .input-label {
+            font-size: 17px;
+            font-weight: 500;
+            color: #f5f5f7;
+            margin-bottom: 16px;
+            display: block;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            color: #f5f5f7;
+            font-size: 16px;
+            font-family: 'Inter', sans-serif;
+            resize: vertical;
+            transition: all 0.3s ease;
+        }
+        
+        textarea:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+        
+        textarea::placeholder {
+            color: #86868b;
+        }
+        
+        .btn-primary {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 24px;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Loading State */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 20px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Results Section */
+        .results-section {
+            display: none;
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        .results-header {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 48px;
+            color: #f5f5f7;
+        }
+        
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+        
+        .model-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 32px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .model-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+        
+        .model-card:hover::before {
+            transform: scaleX(1);
+        }
+        
         .model-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-8px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
         }
+        
         .model-header {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f0f0f0;
+            gap: 12px;
+            margin-bottom: 24px;
         }
-        .model-name {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #333;
-        }
-        .prediction-badge {
-            font-size: 1.2rem;
-            padding: 8px 20px;
-            border-radius: 25px;
-            font-weight: bold;
-        }
-        .badge-spam {
-            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
-            color: white;
-        }
-        .badge-ham {
-            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
-            color: white;
-        }
-        .confidence-bar {
-            background: #f0f0f0;
-            border-radius: 10px;
-            height: 30px;
-            overflow: hidden;
-            margin: 15px 0;
-        }
-        .confidence-fill {
-            height: 100%;
+        
+        .model-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-weight: bold;
-            transition: width 0.5s ease;
+            font-size: 24px;
+            background: rgba(255, 255, 255, 0.05);
         }
-        .confidence-spam {
-            background: linear-gradient(90deg, #ff416c 0%, #ff4b2b 100%);
-        }
-        .confidence-ham {
-            background: linear-gradient(90deg, #56ab2f 0%, #a8e063 100%);
-        }
-        .metrics-table {
-            margin-top: 20px;
-        }
-        .metrics-table th {
-            background: #f8f9fa;
+        
+        .model-name {
+            font-size: 19px;
             font-weight: 600;
-            color: #495057;
+            color: #f5f5f7;
         }
-        .btn-check-spam {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            padding: 12px 40px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            border-radius: 25px;
-            color: white;
-            transition: transform 0.2s ease;
+        
+        .prediction-badge {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 100px;
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 20px;
         }
-        .btn-check-spam:hover {
-            transform: scale(1.05);
-            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        
+        .badge-spam {
+            background: rgba(255, 69, 58, 0.2);
+            color: #ff453a;
+            border: 1px solid rgba(255, 69, 58, 0.3);
         }
-        .loading-spinner {
-            display: none;
+        
+        .badge-ham {
+            background: rgba(48, 209, 88, 0.2);
+            color: #30d158;
+            border: 1px solid rgba(48, 209, 88, 0.3);
         }
+        
+        .confidence-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 100px;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            border-radius: 100px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .fill-spam {
+            background: linear-gradient(90deg, #ff453a, #ff6961);
+        }
+        
+        .fill-ham {
+            background: linear-gradient(90deg, #30d158, #32d74b);
+        }
+        
+        .probabilities {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #86868b;
+            margin-top: 12px;
+        }
+        
+        .prob-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .prob-value {
+            font-size: 17px;
+            font-weight: 600;
+            color: #f5f5f7;
+        }
+        
+        /* Comparison Table */
+        .comparison-section {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 48px;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+        
+        .comparison-header {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 32px;
+            color: #f5f5f7;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+        
+        thead th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #86868b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        tbody tr {
+            background: rgba(255, 255, 255, 0.03);
+            transition: all 0.3s ease;
+        }
+        
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+        
+        tbody td {
+            padding: 20px 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: #f5f5f7;
+            font-size: 15px;
+        }
+        
+        tbody td:first-child {
+            border-left: 1px solid rgba(255, 255, 255, 0.05);
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+        }
+        
+        tbody td:last-child {
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-top-right-radius: 12px;
+            border-bottom-right-radius: 12px;
+        }
+        
+        .model-description {
+            font-size: 13px;
+            color: #86868b;
+            margin-top: 4px;
+        }
+        
+        .metric-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(102, 126, 234, 0.15);
+            color: #667eea;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        /* Error Alert */
         .error-alert {
-            border-radius: 10px;
+            display: none;
+            background: rgba(255, 69, 58, 0.15);
+            border: 1px solid rgba(255, 69, 58, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 32px;
+            color: #ff453a;
         }
-        textarea.form-control {
-            border-radius: 10px;
-            border: 2px solid #e0e0e0;
-            transition: border-color 0.3s ease;
+        
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        textarea.form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .comparison-table {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 30px;
-            margin-top: 30px;
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 40px;
+            }
+            
+            .input-section, .comparison-section {
+                padding: 32px 24px;
+            }
+            
+            .models-grid {
+                grid-template-columns: 1fr;
+            }
         }
-        .model-icon {
-            font-size: 2rem;
-            margin-right: 10px;
-        }
-        .icon-lr { color: #667eea; }
-        .icon-lstm { color: #ff6b6b; }
-        .icon-xlm { color: #51cf66; }
     </style>
 </head>
 <body>
-    <div class="main-container">
+    <div class="container">
         <!-- Header -->
-        <div class="header-card">
-            <h1><i class="fas fa-shield-alt"></i> Taglish Spam Detection</h1>
-            <p class="mb-0">Compare three different machine learning models for spam detection</p>
-            <p class="text-muted">🇵🇭 English & Filipino | 🤖 Logistic Regression • LSTM • XLM-RoBERTa</p>
+        <div class="header">
+            <h1>Spam Detection</h1>
+            <p>Advanced AI-powered spam detection for English and Filipino messages using three different models</p>
         </div>
 
-        <!-- Input Form -->
-        <div class="input-card">
-            <h4 class="mb-3"><i class="fas fa-envelope"></i> Enter Message to Check</h4>
+        <!-- Input Section -->
+        <div class="input-section">
+            <label class="input-label">Enter your message</label>
             <form id="spamForm">
-                <div class="mb-3">
-                    <textarea 
-                        class="form-control" 
-                        id="messageInput" 
-                        rows="4" 
-                        placeholder="Type or paste your message here... (English or Filipino)"
-                        required
-                    ></textarea>
-                </div>
-                <div class="text-center">
-                    <button type="submit" class="btn btn-check-spam">
-                        <i class="fas fa-search"></i> Check for Spam
-                    </button>
-                    <div class="loading-spinner mt-3">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Analyzing with all models...</p>
-                    </div>
-                </div>
+                <textarea 
+                    id="messageInput" 
+                    placeholder="Type or paste your message here..."
+                    required
+                ></textarea>
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    Check for Spam
+                </button>
             </form>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="color: #86868b;">Analyzing with all models...</p>
+            </div>
         </div>
 
         <!-- Error Alert -->
-        <div id="errorAlert" class="alert alert-danger error-alert" style="display: none;" role="alert">
-            <i class="fas fa-exclamation-triangle"></i> <span id="errorMessage"></span>
+        <div class="error-alert" id="errorAlert">
+            <strong>Error:</strong> <span id="errorMessage"></span>
         </div>
 
-        <!-- Results Container -->
-        <div id="resultsContainer" style="display: none;">
-            <h3 class="text-white text-center mb-4"><i class="fas fa-chart-bar"></i> Detection Results</h3>
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <h2 class="results-header">Detection Results</h2>
             
-            <!-- Model Results -->
-            <div class="row">
-                <!-- Logistic Regression -->
-                <div class="col-md-4 mb-3">
-                    <div class="model-card" id="lr-card">
-                        <div class="model-header">
-                            <div>
-                                <i class="fas fa-calculator model-icon icon-lr"></i>
-                                <span class="model-name">Logistic Regression</span>
-                            </div>
-                        </div>
-                        <div id="lr-result"></div>
-                    </div>
-                </div>
-
-                <!-- LSTM -->
-                <div class="col-md-4 mb-3">
-                    <div class="model-card" id="lstm-card">
-                        <div class="model-header">
-                            <div>
-                                <i class="fas fa-brain model-icon icon-lstm"></i>
-                                <span class="model-name">LSTM</span>
-                            </div>
-                        </div>
-                        <div id="lstm-result"></div>
-                    </div>
-                </div>
-
-                <!-- XLM-RoBERTa -->
-                <div class="col-md-4 mb-3">
-                    <div class="model-card" id="xlm-card">
-                        <div class="model-header">
-                            <div>
-                                <i class="fas fa-robot model-icon icon-xlm"></i>
-                                <span class="model-name">XLM-RoBERTa</span>
-                            </div>
-                        </div>
-                        <div id="xlm-result"></div>
-                    </div>
-                </div>
+            <div class="models-grid" id="modelsGrid">
+                <!-- Model cards will be inserted here -->
             </div>
 
-            <!-- Performance Metrics Comparison -->
-            <div class="comparison-table">
-                <h4 class="mb-4"><i class="fas fa-trophy"></i> Model Performance Comparison</h4>
+            <!-- Performance Comparison -->
+            <div class="comparison-section">
+                <h3 class="comparison-header">Model Performance Comparison</h3>
                 <div class="table-responsive">
-                    <table class="table table-hover metrics-table">
+                    <table>
                         <thead>
                             <tr>
                                 <th>Model</th>
@@ -562,7 +840,7 @@ HTML_TEMPLATE = """
                             </tr>
                         </thead>
                         <tbody id="metricsTableBody">
-                            <!-- Will be populated by JavaScript -->
+                            <!-- Metrics will be inserted here -->
                         </tbody>
                     </table>
                 </div>
@@ -570,13 +848,32 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const form = document.getElementById('spamForm');
-        const resultsContainer = document.getElementById('resultsContainer');
-        const loadingSpinner = document.querySelector('.loading-spinner');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const resultsSection = document.getElementById('resultsSection');
+        const modelsGrid = document.getElementById('modelsGrid');
         const errorAlert = document.getElementById('errorAlert');
         const errorMessage = document.getElementById('errorMessage');
+
+        const modelConfigs = {
+            logistic_regression: {
+                name: 'Logistic Regression',
+                icon: '📊',
+                color: '#667eea'
+            },
+            lstm: {
+                name: 'LSTM',
+                icon: '🧠',
+                color: '#ff6b6b'
+            },
+            xlm_roberta: {
+                name: 'XLM-RoBERTa',
+                icon: '🤖',
+                color: '#51cf66'
+            }
+        };
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -584,10 +881,10 @@ HTML_TEMPLATE = """
             const message = document.getElementById('messageInput').value;
             
             // Show loading
-            loadingSpinner.style.display = 'block';
-            resultsContainer.style.display = 'none';
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            resultsSection.style.display = 'none';
             errorAlert.style.display = 'none';
-            form.querySelector('button[type="submit"]').disabled = true;
 
             try {
                 const response = await fetch('/predict', {
@@ -604,96 +901,123 @@ HTML_TEMPLATE = """
                     throw new Error(data.error);
                 }
 
-                // Display results
                 displayResults(data);
-                resultsContainer.style.display = 'block';
+                resultsSection.style.display = 'block';
 
             } catch (error) {
                 errorMessage.textContent = error.message;
                 errorAlert.style.display = 'block';
             } finally {
-                loadingSpinner.style.display = 'none';
-                form.querySelector('button[type="submit"]').disabled = false;
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
             }
         });
 
         function displayResults(data) {
-            // Display Logistic Regression result
-            displayModelResult('lr', data.logistic_regression);
-            
-            // Display LSTM result
-            displayModelResult('lstm', data.lstm);
-            
-            // Display XLM-RoBERTa result
-            displayModelResult('xlm', data.xlm_roberta);
+            // Clear previous results
+            modelsGrid.innerHTML = '';
+
+            // Display each model result
+            ['logistic_regression', 'lstm', 'xlm_roberta'].forEach(modelKey => {
+                const result = data[modelKey];
+                const config = modelConfigs[modelKey];
+                
+                const card = createModelCard(config, result);
+                modelsGrid.appendChild(card);
+            });
 
             // Display metrics comparison
-            displayMetricsComparison(data.metadata);
+            displayMetricsTable(data.metadata);
         }
 
-        function displayModelResult(modelKey, result) {
-            const resultDiv = document.getElementById(`${modelKey}-result`);
-            
+        function createModelCard(config, result) {
+            const card = document.createElement('div');
+            card.className = 'model-card';
+
             if (result.error) {
-                resultDiv.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-circle"></i> ${result.error}
+                card.innerHTML = `
+                    <div class="model-header">
+                        <div class="model-icon">${config.icon}</div>
+                        <div class="model-name">${config.name}</div>
+                    </div>
+                    <div style="padding: 20px; background: rgba(255, 69, 58, 0.1); border-radius: 12px; color: #ff453a;">
+                        ⚠️ ${result.error}
                     </div>
                 `;
-                return;
+                return card;
             }
 
             const isSpam = result.label === 'SPAM';
             const badgeClass = isSpam ? 'badge-spam' : 'badge-ham';
-            const confidenceClass = isSpam ? 'confidence-spam' : 'confidence-ham';
-            const icon = isSpam ? 'fa-ban' : 'fa-check-circle';
+            const fillClass = isSpam ? 'fill-spam' : 'fill-ham';
 
-            resultDiv.innerHTML = `
-                <div class="text-center mb-3">
-                    <span class="prediction-badge ${badgeClass}">
-                        <i class="fas ${icon}"></i> ${result.label}
-                    </span>
+            card.innerHTML = `
+                <div class="model-header">
+                    <div class="model-icon">${config.icon}</div>
+                    <div class="model-name">${config.name}</div>
                 </div>
-                <div class="confidence-bar">
-                    <div class="confidence-fill ${confidenceClass}" style="width: ${result.confidence * 100}%">
-                        ${(result.confidence * 100).toFixed(1)}% confident
+                <div>
+                    <span class="prediction-badge ${badgeClass}">
+                        ${result.label}
+                    </span>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill ${fillClass}" style="width: ${result.confidence * 100}%"></div>
+                    </div>
+                    <div style="text-align: center; margin: 12px 0;">
+                        <span style="font-size: 24px; font-weight: 600; color: #f5f5f7;">
+                            ${(result.confidence * 100).toFixed(1)}%
+                        </span>
+                        <span style="font-size: 13px; color: #86868b; margin-left: 4px;">confident</span>
+                    </div>
+                    <div class="probabilities">
+                        <div class="prob-item">
+                            <span>Spam</span>
+                            <span class="prob-value">${(result.spam_probability * 100).toFixed(2)}%</span>
+                        </div>
+                        <div class="prob-item" style="text-align: right;">
+                            <span>Ham</span>
+                            <span class="prob-value">${(result.ham_probability * 100).toFixed(2)}%</span>
+                        </div>
                     </div>
                 </div>
-                <div class="mt-3">
-                    <small class="text-muted">
-                        <strong>Spam probability:</strong> ${(result.spam_probability * 100).toFixed(2)}%<br>
-                        <strong>Ham probability:</strong> ${(result.ham_probability * 100).toFixed(2)}%
-                    </small>
-                </div>
             `;
+
+            return card;
         }
 
-        function displayMetricsComparison(metadata) {
+        function displayMetricsTable(metadata) {
             const tbody = document.getElementById('metricsTableBody');
-            
+            tbody.innerHTML = '';
+
             const models = [
-                { key: 'logistic_regression', icon: 'fa-calculator', color: '#667eea' },
-                { key: 'lstm', icon: 'fa-brain', color: '#ff6b6b' },
-                { key: 'xlm_roberta', icon: 'fa-robot', color: '#51cf66' }
+                { key: 'logistic_regression', icon: '📊' },
+                { key: 'lstm', icon: '🧠' },
+                { key: 'xlm_roberta', icon: '🤖' }
             ];
 
-            tbody.innerHTML = models.map(model => {
+            models.forEach(model => {
                 const meta = metadata[model.key];
-                return `
-                    <tr>
-                        <td>
-                            <i class="fas ${model.icon}" style="color: ${model.color}"></i>
-                            <strong>${meta.name}</strong>
-                            <br><small class="text-muted">${meta.description}</small>
-                        </td>
-                        <td><strong>${(meta.accuracy * 100).toFixed(2)}%</strong></td>
-                        <td>${(meta.precision * 100).toFixed(2)}%</td>
-                        <td>${(meta.recall * 100).toFixed(2)}%</td>
-                        <td>${(meta.f1 * 100).toFixed(2)}%</td>
-                        <td><span class="badge bg-info">${meta.training_time}</span></td>
-                    </tr>
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 24px;">${model.icon}</span>
+                            <div>
+                                <div style="font-weight: 600;">${meta.name}</div>
+                                <div class="model-description">${meta.description}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><strong>${(meta.accuracy * 100).toFixed(2)}%</strong></td>
+                    <td>${(meta.precision * 100).toFixed(2)}%</td>
+                    <td>${(meta.recall * 100).toFixed(2)}%</td>
+                    <td>${(meta.f1 * 100).toFixed(2)}%</td>
+                    <td><span class="metric-badge">${meta.training_time}</span></td>
                 `;
-            }).join('');
+                
+                tbody.appendChild(row);
+            });
         }
     </script>
 </body>
@@ -728,6 +1052,8 @@ def predict():
         return jsonify(results)
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -742,7 +1068,8 @@ def health():
     
     return jsonify({
         'status': 'healthy',
-        'models_loaded': model_status
+        'models_loaded': model_status,
+        'metadata': model_metadata
     })
 
 
