@@ -1,0 +1,63 @@
+{
+  "evaluation_info": {
+    "total_models": 3,
+    "evaluation_date": "2025-10-29T10:21:35.180682",
+    "dataset_info": {
+      "test_size": 0.2,
+      "random_state": 42
+    }
+  },
+  "model_results": [
+    {
+      "model_name": "Logistic Regression",
+      "accuracy": 0.972498090145149,
+      "precision": 0.9935897435897436,
+      "recall": 0.9011627906976745,
+      "f1_score": 0.9451219512195121,
+      "confusion_matrix": [
+        [
+          963,
+          2
+        ],
+        [
+          34,
+          310
+        ]
+      ]
+    },
+    {
+      "model_name": "LSTM",
+      "accuracy": 0.8342245989304813,
+      "precision": 0.9922480620155039,
+      "recall": 0.37209302325581395,
+      "f1_score": 0.5412262156448203,
+      "confusion_matrix": [
+        [
+          964,
+          1
+        ],
+        [
+          216,
+          128
+        ]
+      ]
+    },
+    {
+      "model_name": "XLM-RoBERTa",
+      "accuracy": 0.9824293353705118,
+      "precision": 0.9572649572649573,
+      "recall": 0.9767441860465116,
+      "f1_score": 0.9669064748201439,
+      "confusion_matrix": [
+        [
+          950,
+          15
+        ],
+        [
+          8,
+          336
+        ]
+      ]
+    }
+  ]
+}
