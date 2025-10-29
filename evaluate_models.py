@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-evaluate_models.py - Unified Model Evaluation Script
-
-This script loads all trained models (XLM-RoBERTa, LSTM, TF-IDF + Logistic Regression)
-and evaluates them on the same test set for consistent comparison.
-
-Author: AI Assistant
-Date: 2024
-"""
-
 import os
 import sys
 import json

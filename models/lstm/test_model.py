@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-test_model.py - LSTM Spam Detection Testing Script
-
-This script loads the trained LSTM model and provides an interactive interface
-for spam detection with percentage predictions.
-
-Author: AI Assistant
-Date: 2024
-"""
-
 import os
 import pickle
 import numpy as np

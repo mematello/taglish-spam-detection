@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-Taglish Spam Detection System - Testing Module
-==============================================
-Test the trained spam detection model for English and Filipino (Taglish) SMS messages.
-
-Author: Claude
-Date: September 2025
-"""
-
 import pandas as pd
 import numpy as np
 import joblib

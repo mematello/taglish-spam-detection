@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-train_model.py - LSTM Spam Detection Training Script
-
-This script trains an LSTM model for spam vs ham detection and saves all artifacts.
-It includes data preprocessing, model training, evaluation, and artifact saving.
-
-Author: AI Assistant
-Date: 2024
-"""
-
 import os
 import pandas as pd
 import numpy as np

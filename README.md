@@ -1,14 +1,16 @@
 # Taglish Spam Detection System 🇵🇭🇺🇸
 
-A comprehensive spam detection system for English and Filipino (Taglish) SMS messages using multiple machine learning approaches.
+A comprehensive spam detection system for English and Filipino (Taglish) SMS messages using multiple machine learning approaches: Logistic Regression (TF‑IDF), LSTM, and XLM‑RoBERTa.
 
-## 📊 Model Comparison
+## 📊 Compare Models
 
-| Model | Accuracy | Precision | Recall | F1-Score | Training Time |
-|-------|----------|-----------|--------|----------|---------------|
-| **Logistic Regression** | 97.33% | 99.36% | 90.41% | 94.67% | 0.25s |
-| **LSTM** | TBD | TBD | TBD | TBD | TBD |
-| **XLM-RoBERTa** | TBD | TBD | TBD | TBD | TBD |
+After training, run the unified evaluator to generate metrics and plots:
+```bash
+python evaluate_models.py
+```
+Outputs created in the project root:
+- `metrics.json`, `metrics_summary.csv`
+- `model_comparison.png`, `confusion_matrices_comparison.png`
 
 ## 🚀 Quick Start
 
@@ -18,154 +20,130 @@ pip install -r requirements.txt
 ```
 
 ### Dataset
-Place your `final_spam_ham_dataset.csv` in the `dataset/` folder with columns:
+Place `dataset/final_spam_ham_dataset.csv` with columns:
 - `label`: 'ham' or 'spam'
 - `text`: message content
 
-### Training Models
+### Train and Test Models
 
-#### 1. Logistic Regression
+#### 1) Logistic Regression (TF‑IDF)
 ```bash
-cd models/logistic_regression/
-python train_model.py
-python test_model.py
+cd models/logistic_regression
+python train_model.py   # trains and saves to model_files/
+python test_model.py    # interactive tester (uses saved model_files)
 ```
+Artifacts: `models/logistic_regression/model_files/`
 
-#### 2. LSTM (Coming Soon)
+#### 2) LSTM
 ```bash
-cd models/lstm/
-python train_lstm.py
-python test_lstm.py
-```
+cd models/lstm
+python train_model.py   # saves artifacts to model_files/
 
-#### 3. XLM-RoBERTa (Coming Soon)
-```bash
-cd models/xlm_roberta/
-python train_xlm_roberta.py
-python test_xlm_roberta.py
+# Run tester from the artifacts folder so it can find the files
+cd model_files
+python ../test_model.py
 ```
+Artifacts: `models/lstm/model_files/` (includes `lstm_spam_model.h5`, `tokenizer.pkl`, `label_encoder.pkl`, `model_config.pkl`)
+
+#### 3) XLM‑RoBERTa
+```bash
+cd models/xlm-roberta
+python train_model.py   # trains and saves to saved_model/
+python test_model.py    # interactive tester
+```
+Artifacts: `models/xlm-roberta/saved_model/`
 
 ### Web Interface
 ```bash
-cd web_ui/
+cd web_ui
 python app.py
 ```
-Visit `http://localhost:5000` to compare all models interactively.
+Visit `http://localhost:5000`.
 
 ## 📁 Project Structure
 
 ```
 taglish-spam-detection/
 ├── models/
-│   ├── logistic_regression/    # Traditional ML approach
-│   ├── lstm/                   # Deep learning approach
-│   └── xlm_roberta/           # Transformer-based approach
-├── web_ui/                    # Interactive comparison interface
-├── dataset/                   # Training data
-└── results/                   # Performance comparisons
+│   ├── logistic_regression/      # Traditional ML (TF‑IDF + LR)
+│   ├── lstm/                     # Deep learning sequence model
+│   └── xlm-roberta/              # Transformer-based model
+├── dataset/                      # Training data CSV
+├── web_ui/                       # Simple web app for testing
+├── evaluate_models.py            # Unified evaluation/plots
+├── metrics.json | metrics_summary.csv | *.png
 ```
 
 ## 🎯 Features
 
-### Logistic Regression Model
-- ✅ Fast training (< 1 second)
-- ✅ High precision (99.36%)
-- ✅ TF-IDF vectorization with n-grams
-- ✅ Interactive testing mode
-- ✅ Batch processing support
+### Logistic Regression
+- Fast training, TF‑IDF with 1–2 grams, ~5000 features
+- Interactive testing and batch file testing
 
-### LSTM Model (In Development)
-- 🔄 Sequential pattern learning
-- 🔄 Word embedding support
-- 🔄 Handles variable message lengths
+### LSTM
+- Tokenization, padding, embeddings, dropout regularization
+- Saves all artifacts for reproducible inference
 
-### XLM-RoBERTa Model (In Development)
-- 🔄 Multilingual transformer
-- 🔄 Pre-trained on Filipino text
-- 🔄 State-of-the-art performance
-
-## 📊 Sample Results
-
-### Test Messages
-```
-✅ "Hey, how are you doing today?" → HAM (96.1% confidence)
-❌ "Congratulations! You won 50000 pesos!" → SPAM (91.3% confidence)
-✅ "Tara, kita tayo bukas." → HAM (80.4% confidence)
-❌ "Free GCash promo! Click here!" → SPAM (94.7% confidence)
-```
-
-## 🌐 Web Interface Features
-
-- **Real-time Comparison**: Test messages across all three models
-- **Performance Metrics**: Visual comparison of accuracy, speed, and confidence
-- **Interactive Dashboard**: Charts and graphs showing model performance
-- **Batch Testing**: Upload files for bulk message analysis
+### XLM‑RoBERTa
+- Multilingual transformer (English/Filipino)
+- Robust probabilities with softmax outputs
 
 ## 🔬 Technical Details
 
 ### Preprocessing
-- Text normalization and cleaning
-- Lowercasing and whitespace removal
-- Support for Filipino diacritics
+- Lowercasing, punctuation/URL/number removal, whitespace cleanup
+- LSTM uses NLTK (downloads required data at first run)
 
-### Feature Engineering
-- **Logistic Regression**: TF-IDF with 1-2 grams, 5000 features
-- **LSTM**: Word embeddings, sequence padding
-- **XLM-RoBERTa**: Transformer tokenization
+### Evaluation
+- Consistent train/test split
+- Accuracy, Precision, Recall, F1
+- Confusion matrices and model comparison plots
 
-## 📈 Performance Analysis
+## 🧪 Quick Test Examples
 
-### Confusion Matrix (Logistic Regression)
-```
-           Predicted
-         Ham    Spam
-Ham      963       2
-Spam      33     311
+After training LR:
+```bash
+cd models/logistic_regression
+python test_model.py
 ```
 
-### Error Analysis
-- **False Positive Rate**: 0.21% (very conservative)
-- **False Negative Rate**: 9.59% (acceptable for spam detection)
+After training LSTM:
+```bash
+cd models/lstm/model_files
+python ../test_model.py
+```
+
+After training XLM‑RoBERTa:
+```bash
+cd models/xlm-roberta
+python test_model.py
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit (`git commit -m "Add some AmazingFeature"`)
+4. Push (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 Dataset Information
+## 📝 Dataset Info
 
-- **Total Messages**: 6,542
-- **Ham Messages**: 4,825 (73.8%)
-- **Spam Messages**: 1,717 (26.2%)
-- **Languages**: English, Filipino, Taglish (mixed)
-
-## 🏆 Team
-
-- **Marcus Oliver**: Logistic Regression implementation
-- **Dominic Vilog**: LSTM implementation  
-- **Ian Placencia**: XLM-RoBERTa implementation
+- Languages: English, Filipino, Taglish
+- Labels: `ham`, `spam`
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Dataset contributors
-- Filipino NLP community
-- Open source ML libraries
+MIT License — see `LICENSE`.
 
 ## 🔮 Future Work
 
 - [ ] Real-time SMS integration
-- [ ] Mobile app development
-- [ ] Additional Filipino dialects support
-- [ ] Ensemble model combining all three approaches
-- [ ] API deployment for production use
+- [ ] Mobile app
+- [ ] Additional Filipino dialects
+- [ ] Ensemble of all models
+- [ ] Production API deployment
 
 ---
 
-*Protecting Filipino messages from spam, one algorithm at a time! 🇵🇭*# taglish-spam-detection
+Protecting Filipino messages from spam, one algorithm at a time. 🇵🇭
