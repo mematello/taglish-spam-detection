@@ -132,6 +132,13 @@ python test_model.py
 - Languages: English, Filipino, Taglish
 - Labels: `ham`, `spam`
 
+## 👥 Contributors
+
+- Marcus Oliver — Logistic Regression
+- Dominic Vilog — LSTM
+- Ian Placencia — XLM‑RoBERTa
+- Professor: Dr. Gerard Francesco Apolinario
+
 ## 📄 License
 
 MIT License — see `LICENSE`.
