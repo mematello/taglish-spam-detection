@@ -70,12 +70,6 @@ Across the pipeline, several common steps are applied before the data reaches ea
 
 - **Text cleaning (`models/lstm/train_model.py`)**
   - Lowercase the text.
-  - Remove:
-    - URLs (`http\S+`, `www\.\S+`, `https\S+`)
-    - Email addresses
-    - Phone number patterns
-    - All digits
-    - Punctuation
   - Collapse multiple whitespace characters into a single space.
 
 - **Tokenization and sequence construction**
@@ -200,8 +194,6 @@ Across the pipeline, several common steps are applied before the data reaches ea
     - Contains detailed metrics per model (accuracy, precision, recall, F1, confusion matrix, and optionally thresholds and curve-based metrics).
   - `metrics_summary.csv`:
     - Compact table containing model name and main metrics for quick comparison.
-  - `thresholds.json`:
-    - Per-model best thresholds used in `web_ui/app.py` for spam/ham decisions.
 
 ---
 
