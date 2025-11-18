@@ -1134,8 +1134,27 @@ HTML_TEMPLATE = """
             text-align: center;
             font-size: 32px;
             font-weight: 600;
-            margin-bottom: 48px;
+            margin-bottom: 16px;
             color: #f5f5f7;
+        }
+
+        .final-verdict {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 18px;
+            color: #a1a1a6;
+        }
+
+        .final-verdict span {
+            font-weight: 600;
+        }
+
+        .final-verdict .spam-label {
+            color: #ff453a;
+        }
+
+        .final-verdict .ham-label {
+            color: #30d158;
         }
         
         .models-grid {
@@ -1593,7 +1612,8 @@ HTML_TEMPLATE = """
 
         <div class="results-section" id="resultsSection">
             <h2 class="results-header">📊 Detection Results</h2>
-            
+            <div class="final-verdict" id="finalVerdict"></div>
+
             <div class="models-grid" id="modelsGrid"></div>
 
             <div class="comparison-section">
@@ -1758,7 +1778,7 @@ HTML_TEMPLATE = """
                     return;
                 }
 
-                displayResults(data);
+                displayResults(data, message);
                 resultsSection.style.display = 'block';
                 
                 // Scroll to results
@@ -1813,7 +1833,7 @@ HTML_TEMPLATE = """
             }
         });
 
-        function displayResults(data) {
+        function displayResults(data, originalMessage) {
             modelsGrid.innerHTML = '';
 
             ['logistic_regression', 'lstm', 'xlm_roberta'].forEach(modelKey => {
@@ -1824,7 +1844,26 @@ HTML_TEMPLATE = """
                 modelsGrid.appendChild(card);
             });
 
+            updateFinalVerdict(data.ensemble_verdict, originalMessage);
             displayMetricsTable(data.metadata);
+        }
+
+        function updateFinalVerdict(verdict, originalMessage) {
+            const verdictEl = document.getElementById('finalVerdict');
+            if (!verdict || !verdict.label) {
+                verdictEl.textContent = '';
+                return;
+            }
+
+            const safeMessage = originalMessage || '';
+            const label = verdict.label.toUpperCase();
+            if (label === 'SPAM') {
+                verdictEl.innerHTML = `The message:"${safeMessage}" <br> is <span class="spam-label">SPAM</span> (${verdict.spam_votes}/3 models agreed)`;
+            } else if (label === 'HAM') {
+                verdictEl.innerHTML = `The message: "${safeMessage}" <br> is <span class="ham-label">HAM</span> (${verdict.ham_votes}/3 models agreed)`;
+            } else {
+                verdictEl.textContent = `The message: "${safeMessage}" <br> is Inconclusive (no 2-out-of-3 majority)`;
+            }
         }
 
         function createModelCard(config, result) {
@@ -1959,11 +1998,43 @@ def predict():
             })
         
         # Get predictions from all models
+        lr_result = get_model('logistic_regression').predict(message)
+        lstm_result = get_model('lstm').predict(message)
+        xlm_result = get_model('xlm_roberta').predict(message)
+
+        # Majority vote (2-out-of-3) final verdict
+        spam_votes = 0
+        ham_votes = 0
+        models_considered = 0
+
+        for res in (lr_result, lstm_result, xlm_result):
+            if isinstance(res, dict) and 'error' not in res and 'prediction' in res:
+                models_considered += 1
+                if int(res['prediction']) == 1:
+                    spam_votes += 1
+                else:
+                    ham_votes += 1
+
+        if models_considered == 0:
+            final_label = 'INCONCLUSIVE'
+        elif spam_votes >= 2:
+            final_label = 'SPAM'
+        elif ham_votes >= 2:
+            final_label = 'HAM'
+        else:
+            final_label = 'INCONCLUSIVE'
+
         results = {
             'gibberish_detected': False,
-            'logistic_regression': get_model('logistic_regression').predict(message),
-            'lstm': get_model('lstm').predict(message),
-            'xlm_roberta': get_model('xlm_roberta').predict(message),
+            'logistic_regression': lr_result,
+            'lstm': lstm_result,
+            'xlm_roberta': xlm_result,
+            'ensemble_verdict': {
+                'label': final_label,
+                'spam_votes': spam_votes,
+                'ham_votes': ham_votes,
+                'models_considered': models_considered,
+            },
             'metadata': model_metadata
         }
         
