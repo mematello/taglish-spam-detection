@@ -2,25 +2,32 @@
 
 This document captures the slide contents for the Taglish spam detection project, focusing on:
 
-- **(b)** Discussion of the unprepared and prepared datasets  
-- **(c)** Explanation of the codes used for data preparation, model training, and testing  
-- **(d)** Presentation of results using visual aids (charts/graphs) based on `@presentation_viz`  
-- **(e)** Summary of findings and recommendations  
+- Discussion of the unprepared and prepared datasets  
+- Explanation of the codes used for data preparation, model training, and testing  
+- Presentation of results using visual aids (charts/graphs) based on `@presentation_viz`  
+- Summary of findings and recommendations  
 
 All content is based strictly on the current `taglish-spam-detection` project.
 
 ---
 
-## (b) Unprepared vs Prepared Datasets
+## Unprepared vs Prepared Datasets
 
 ### Unprepared (Raw) Dataset
 
-- **Source and format**
-  - Single CSV file: `dataset/final_spam_ham_dataset.csv`
-  - Columns:
-    - `label`: human-assigned class (`ham` or `spam`)
-    - `text`: raw message content (SMS/chat-style text)
-  - Language: **Taglish** (mix of English and Filipino), reflecting real-life messaging patterns.
+- **Sources**
+  - `dataset/unprepared/english_spam_dataset.csv`
+  - `dataset/unprepared/filipino_spam_dataset.csv`
+
+- **Provenance**
+  - English spam collection: https://archive.ics.uci.edu/dataset/228/sms+spam+collection  
+    - Columns: `v1`, `v2`, `,,` (label, text, unused placeholders)
+  - Filipino spam collection: https://www.kaggle.com/datasets/bwandowando/philippine-spam-sms-messages  
+    - Columns: `masked_celphone_number`, `hashed_celphone_number`, `date`, `text`, `carrier`
+
+- **Format and language**
+  - English source: classic SMS spam/ham mix (mostly English with some slang).
+  - Filipino source: promotional and phishing-style SMS in Filipino/Taglish, labeled spam-only.
 
 - **Issues observed in the raw data**
   - **Missing or invalid values**
@@ -91,7 +98,7 @@ Across the pipeline, several common steps are applied before the data reaches ea
 
 ---
 
-## (c) Code Explanation – Data Preparation, Training, and Testing
+## Code Explanation – Data Preparation, Training, and Testing
 
 ### Logistic Regression + TF‑IDF
 
@@ -198,7 +205,7 @@ Across the pipeline, several common steps are applied before the data reaches ea
 
 ---
 
-## (d) Presentation of Results Using Visual Aids (Charts/Graphs)
+## Presentation of Results Using Visual Aids (Charts/Graphs)
 
 Visualization is implemented in the `@presentation_viz` module and uses the outputs of `evaluate_models.py` (`metrics.json`). The generated charts are saved in `presentation_viz/` and are suitable for slides.
 
@@ -274,7 +281,7 @@ Visualization is implemented in the `@presentation_viz` module and uses the outp
 
 ---
 
-## (e) Summary of Findings and Recommendations
+## Summary of Findings and Recommendations
 
 ### Summary of Model Performance
 
