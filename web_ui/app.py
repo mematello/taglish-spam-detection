@@ -144,12 +144,20 @@ class GibberishDetector:
     
     def calculate_word_score(self, text: str) -> float:
         """Calculate percentage of recognized words"""
+        # Split by word boundaries and also by common punctuation
         words = re.findall(r'\b\w+\b', text.lower())
+        # Also try splitting by punctuation if no words found
+        if not words:
+            # Split by common delimiters
+            words = re.split(r'[^\w]+', text.lower())
+            words = [w for w in words if len(w) > 0]
+        
         if not words:
             return 0.0
         
-        recognized = sum(1 for word in words if word in self.common_words or len(word) >= 3)
-        return recognized / len(words)
+        # Only count words that are in the common words list (not just length >= 3)
+        recognized = sum(1 for word in words if word in self.common_words)
+        return recognized / len(words) if len(words) > 0 else 0.0
     
     def has_repeated_chars(self, text: str, threshold: int = 5) -> bool:
         """Check for excessive character repetition"""
@@ -190,26 +198,68 @@ class GibberishDetector:
         vowel_ratio = self.calculate_vowel_ratio(clean_text)
         word_score = self.calculate_word_score(clean_text)
         consonant_clusters = self.calculate_consonant_clusters(clean_text)
+        text_length = len(clean_text.strip())
         
         # Check vowel ratio (normal English/Filipino: 0.35-0.45)
-        if vowel_ratio < 0.15 or vowel_ratio > 0.7:
-            if len(clean_text.strip()) > 10:  # Only for longer texts
+        # For shorter texts, use a more lenient threshold
+        vowel_threshold_min = 0.1 if text_length <= 10 else 0.15
+        if vowel_ratio < vowel_threshold_min or vowel_ratio > 0.7:
+            if text_length >= 5:  # Lower threshold for shorter texts
                 return True, f"Unusual vowel ratio: {vowel_ratio:.2f}", 0.85
         
-        # Check word recognition
-        if word_score < 0.3 and len(text.split()) > 3:
-            return True, f"Too many unrecognized words: {word_score:.2%} recognized", 0.90
+        # Check word recognition - improved for short texts
+        # Use same word extraction as calculate_word_score
+        words = re.findall(r'\b\w+\b', text.lower())
+        if not words:
+            words = re.split(r'[^\w]+', text.lower())
+            words = [w for w in words if len(w) > 0]
+        
+        if len(words) > 0:
+            # For texts with words, check if any are recognized
+            if word_score == 0.0 and len(words) >= 1:
+                # No recognized words at all
+                if text_length >= 5:
+                    return True, "No recognizable words found", 0.92
+            elif word_score < 0.3:
+                # For longer texts with multiple words
+                if len(words) > 3:
+                    return True, f"Too many unrecognized words: {word_score:.2%} recognized", 0.90
+                # For shorter texts, be more strict
+                elif len(words) >= 1 and text_length >= 5:
+                    return True, "No recognizable words found", 0.90
+        else:
+            # No words found (just characters/punctuation)
+            if text_length >= 5:
+                return True, "No recognizable words found", 0.88
         
         # Check consonant clusters
-        if consonant_clusters > 3:
+        if consonant_clusters > 2:  # Lowered threshold
             return True, f"Excessive consonant clusters detected: {consonant_clusters}", 0.80
         
         # Check if text is just random characters
         alpha_chars = sum(1 for c in text if c.isalpha())
         if alpha_chars > 0:
             special_ratio = sum(1 for c in text if c in string.punctuation) / alpha_chars
-            if special_ratio > 0.5:
+            if special_ratio > 0.3:  # Lowered threshold
                 return True, "Too many special characters", 0.85
+        
+        # Additional check: if text has very low vowel ratio and no recognized words
+        if vowel_ratio < 0.2 and word_score == 0.0 and text_length >= 5:
+            return True, "Text contains no recognizable words and unusual character patterns", 0.88
+        
+        # Check for random character sequences (no spaces, no recognized words, short length)
+        if text_length >= 5 and text_length <= 20:
+            # Check if text has no spaces or very few spaces
+            space_count = text.count(' ')
+            if space_count <= 1:  # Allow for one space in short texts
+                # Check if it's mostly consonants with very few vowels
+                if vowel_ratio < 0.25:
+                    # If no recognized words or very low word score
+                    if word_score == 0.0 or (word_score < 0.2 and len(words) <= 2):
+                        return True, "Random character sequence detected", 0.90
+                # Also check: if no recognized words and low vowel ratio, it's likely gibberish
+                elif word_score == 0.0 and vowel_ratio < 0.3:
+                    return True, "No recognizable words found", 0.88
         
         return False, "Text appears legitimate", 0.0
 
@@ -1108,6 +1158,135 @@ HTML_TEMPLATE = """
             }
         }
         
+        /* Modal Dialog Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease-out;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.show {
+            display: flex;
+        }
+        
+        .modal-dialog {
+            background: rgba(28, 28, 30, 0.95);
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.3s ease-out;
+            position: relative;
+        }
+        
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .modal-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(255, 214, 10, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #f5f5f7;
+            margin: 0;
+        }
+        
+        .modal-body {
+            color: #a1a1a6;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        
+        .modal-body strong {
+            color: #ffd60a;
+            display: block;
+            margin-bottom: 12px;
+            font-size: 17px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .btn-modal {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .btn-modal-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-modal-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-modal-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f5f5f7;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-modal-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 40px;
@@ -1173,6 +1352,24 @@ HTML_TEMPLATE = """
             <span id="errorMessage"></span>
         </div>
 
+        <!-- Gibberish Detection Modal Dialog -->
+        <div class="modal-overlay" id="gibberishModal">
+            <div class="modal-dialog">
+                <div class="modal-header">
+                    <div class="modal-icon">⚠️</div>
+                    <h2 class="modal-title">Invalid Input Detected</h2>
+                </div>
+                <div class="modal-body">
+                    <strong>What you entered is invalid.</strong>
+                    <p id="gibberishModalMessage"></p>
+                    <p style="margin-top: 16px; color: #f5f5f7;">Please type a valid spam or ham sentence with recognizable words.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal btn-modal-primary" id="gibberishModalOk">OK, I Understand</button>
+                </div>
+            </div>
+        </div>
+
         <div class="results-section" id="resultsSection">
             <h2 class="results-header">📊 Detection Results</h2>
             
@@ -1213,6 +1410,9 @@ HTML_TEMPLATE = """
         const messageInput = document.getElementById('messageInput');
         const charCounter = document.getElementById('charCounter');
         const sampleGrid = document.getElementById('sampleGrid');
+        const gibberishModal = document.getElementById('gibberishModal');
+        const gibberishModalMessage = document.getElementById('gibberishModalMessage');
+        const gibberishModalOk = document.getElementById('gibberishModalOk');
 
         const modelConfigs = {
             logistic_regression: {
@@ -1331,12 +1531,9 @@ HTML_TEMPLATE = """
                 }
                 
                 if (data.gibberish_detected) {
-                    showAlert(gibberishAlert, 
-                        `${data.gibberish_reason} (Confidence: ${(data.gibberish_confidence * 100).toFixed(1)}%). ` +
-                        'Please enter a meaningful message with recognizable words.'
-                    );
-                    messageInput.classList.add('error-input');
-                    messageInput.focus();
+                    showGibberishModal(data.gibberish_reason, data.gibberish_confidence);
+                    loading.style.display = 'none';
+                    submitBtn.disabled = false;
                     return;
                 }
 
@@ -1363,6 +1560,37 @@ HTML_TEMPLATE = """
         function hideAlert(alertElement) {
             alertElement.style.display = 'none';
         }
+
+        function showGibberishModal(reason, confidence) {
+            const reasonText = reason || 'The input contains unrecognizable or nonsensical text.';
+            const confidenceText = confidence ? ` (Confidence: ${(confidence * 100).toFixed(1)}%)` : '';
+            gibberishModalMessage.textContent = reasonText + confidenceText;
+            gibberishModal.classList.add('show');
+            messageInput.classList.add('error-input');
+        }
+
+        function hideGibberishModal() {
+            gibberishModal.classList.remove('show');
+            messageInput.classList.remove('error-input');
+            messageInput.focus();
+        }
+
+        // Close modal handlers
+        gibberishModalOk.addEventListener('click', hideGibberishModal);
+        
+        // Close modal when clicking outside
+        gibberishModal.addEventListener('click', (e) => {
+            if (e.target === gibberishModal) {
+                hideGibberishModal();
+            }
+        });
+
+        // Close modal with ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && gibberishModal.classList.contains('show')) {
+                hideGibberishModal();
+            }
+        });
 
         function displayResults(data) {
             modelsGrid.innerHTML = '';
