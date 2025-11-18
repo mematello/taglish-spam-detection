@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""
-Taglish Spam Detection - Enhanced Flask Web UI
-==============================================
-A web interface to compare three different spam detection models with:
-- Gibberish detection
-- Sample message library
-- Improved security and error handling
-- Better configuration management
-
-Author: Claude
-Date: October 2025
-"""
-
 from flask import Flask, render_template_string, request, jsonify
 import joblib
 import os
