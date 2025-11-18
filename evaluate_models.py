@@ -5,8 +5,15 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, 
-    confusion_matrix, classification_report
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+    precision_recall_curve,
+    roc_auc_score,
+    average_precision_score,
 )
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -113,14 +120,39 @@ def evaluate_logistic_regression(X_test, y_test):
         # Make predictions
         y_pred = model.predict(X_test_tfidf)
         y_pred_proba = model.predict_proba(X_test_tfidf)
-        
-        # Calculate metrics
+        spam_scores = y_pred_proba[:, 1]
+
+        # Core metrics
+        acc = accuracy_score(y_test, y_pred)
+        prec = precision_score(y_test, y_pred)
+        rec = recall_score(y_test, y_pred)  # spam is positive class (1)
+        f1 = f1_score(y_test, y_pred)
+
+        # Spam-focused & curve-based metrics
+        macro_f1 = f1_score(y_test, y_pred, average='macro')
+        spam_recall = recall_score(y_test, y_pred, pos_label=1)
+        roc_auc = roc_auc_score(y_test, spam_scores)
+        pr_auc = average_precision_score(y_test, spam_scores)
+
+        prec_curve, rec_curve, thresh = precision_recall_curve(y_test, spam_scores)
+        # precision_recall_curve returns len(thresh) = len(prec_curve) - 1
+        f1_curve = 2 * prec_curve * rec_curve / (prec_curve + rec_curve + 1e-8)
+        # Ignore the last point where threshold is not defined
+        best_idx = int(np.nanargmax(f1_curve[:-1]))
+        best_threshold = float(thresh[best_idx]) if len(thresh) > 0 else 0.5
+
+        # Aggregate metrics
         metrics = {
             'model_name': 'Logistic Regression',
-            'accuracy': accuracy_score(y_test, y_pred),
-            'precision': precision_score(y_test, y_pred),
-            'recall': recall_score(y_test, y_pred),
-            'f1_score': f1_score(y_test, y_pred),
+            'accuracy': acc,
+            'precision': prec,
+            'recall': rec,
+            'f1_score': f1,
+            'macro_f1': macro_f1,
+            'spam_recall': spam_recall,
+            'roc_auc': roc_auc,
+            'pr_auc': pr_auc,
+            'best_threshold': best_threshold,
             'confusion_matrix': confusion_matrix(y_test, y_pred).tolist(),
             'predictions': y_pred.tolist(),
             'probabilities': y_pred_proba.tolist()
@@ -149,64 +181,61 @@ def evaluate_lstm(X_test, y_test):
     print("\n Evaluating LSTM Model...")
     
     try:
-        import tensorflow as tf
-        import pickle
-        from tensorflow.keras.preprocessing.text import Tokenizer
-        from tensorflow.keras.preprocessing.sequence import pad_sequences
-        
-        # Load model artifacts
-        model_path = 'models/lstm/model_files/lstm_spam_model.h5'
-        tokenizer_path = 'models/lstm/model_files/tokenizer.pkl'
-        config_path = 'models/lstm/model_files/model_config.pkl'
-        
-        if not all(os.path.exists(p) for p in [model_path, tokenizer_path, config_path]):
-            print(" LSTM model files not found")
+        # Use the same NumPy-based runtime as the web UI for consistency
+        import sys
+        sys.path.append('web_ui')
+        from app import LSTMModel  # type: ignore
+
+        lstm = LSTMModel()
+        if not lstm.load():
+            print(" Failed to load LSTM model via web_ui runtime")
             return None
-        
-        # Load artifacts
-        model = tf.keras.models.load_model(model_path)
-        
-        with open(tokenizer_path, 'rb') as f:
-            tokenizer = pickle.load(f)
-        
-        with open(config_path, 'rb') as f:
-            config = pickle.load(f)
-        
-        max_length = config['max_length']
-        
-        # Preprocess test data
-        def clean_text(text):
-            import re
-            import string
-            if pd.isna(text) or not isinstance(text, str):
-                return ""
-            text = text.lower()
-            text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-            text = re.sub(r'\S+@\S+', '', text)
-            text = re.sub(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', '', text)
-            text = re.sub(r'\d+', '', text)
-            text = text.translate(str.maketrans('', '', string.punctuation))
-            text = re.sub(r'\s+', ' ', text).strip()
-            return text
-        
-        X_test_cleaned = [clean_text(text) for text in X_test]
-        sequences = tokenizer.texts_to_sequences(X_test_cleaned)
-        X_test_padded = pad_sequences(sequences, maxlen=max_length, padding='post', truncating='post')
-        
-        # Make predictions
-        y_pred_prob = model.predict(X_test_padded, verbose=0)
-        y_pred = (y_pred_prob > 0.5).astype(int).flatten()
-        
+
+        y_pred = []
+        y_scores = []
+
+        for text in X_test:
+            result = lstm.predict(str(text))
+            if 'error' in result:
+                raise RuntimeError(f"LSTM prediction error: {result['error']}")
+            y_pred.append(int(result['prediction']))
+            y_scores.append(float(result['spam_probability']))
+
+        y_pred = np.array(y_pred, dtype=int)
+        y_scores = np.array(y_scores, dtype=float)
+
+        # Core metrics
+        acc = accuracy_score(y_test, y_pred)
+        prec = precision_score(y_test, y_pred)
+        rec = recall_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred)
+
+        # Spam-focused & curve-based metrics
+        macro_f1 = f1_score(y_test, y_pred, average='macro')
+        spam_recall = recall_score(y_test, y_pred, pos_label=1)
+        roc_auc = roc_auc_score(y_test, y_scores)
+        pr_auc = average_precision_score(y_test, y_scores)
+
+        prec_curve, rec_curve, thresh = precision_recall_curve(y_test, y_scores)
+        f1_curve = 2 * prec_curve * rec_curve / (prec_curve + rec_curve + 1e-8)
+        best_idx = int(np.nanargmax(f1_curve[:-1])) if len(thresh) > 0 else 0
+        best_threshold = float(thresh[best_idx]) if len(thresh) > 0 else 0.5
+
         # Calculate metrics
         metrics = {
             'model_name': 'LSTM',
-            'accuracy': accuracy_score(y_test, y_pred),
-            'precision': precision_score(y_test, y_pred),
-            'recall': recall_score(y_test, y_pred),
-            'f1_score': f1_score(y_test, y_pred),
+            'accuracy': acc,
+            'precision': prec,
+            'recall': rec,
+            'f1_score': f1,
+            'macro_f1': macro_f1,
+            'spam_recall': spam_recall,
+            'roc_auc': roc_auc,
+            'pr_auc': pr_auc,
+            'best_threshold': best_threshold,
             'confusion_matrix': confusion_matrix(y_test, y_pred).tolist(),
             'predictions': y_pred.tolist(),
-            'probabilities': y_pred_prob.flatten().tolist()
+            'probabilities': y_scores.tolist()
         }
         
         print(f" Accuracy: {metrics['accuracy']:.4f}")
@@ -275,13 +304,38 @@ def evaluate_xlm_roberta(X_test, y_test):
                 predictions.append(pred.cpu().item())
                 probabilities.append(probs.cpu().numpy().flatten().tolist())
         
+        prob_array = np.array(probabilities, dtype=float)
+        spam_scores = prob_array[:, 1]
+
+        # Core metrics
+        acc = accuracy_score(y_test, predictions)
+        prec = precision_score(y_test, predictions)
+        rec = recall_score(y_test, predictions)
+        f1 = f1_score(y_test, predictions)
+
+        # Spam-focused metrics
+        macro_f1 = f1_score(y_test, predictions, average='macro')
+        spam_recall = recall_score(y_test, predictions, pos_label=1)
+        roc_auc = roc_auc_score(y_test, spam_scores)
+        pr_auc = average_precision_score(y_test, spam_scores)
+
+        prec_curve, rec_curve, thresh = precision_recall_curve(y_test, spam_scores)
+        f1_curve = 2 * prec_curve * rec_curve / (prec_curve + rec_curve + 1e-8)
+        best_idx = int(np.nanargmax(f1_curve[:-1])) if len(thresh) > 0 else 0
+        best_threshold = float(thresh[best_idx]) if len(thresh) > 0 else 0.5
+
         # Calculate metrics
         metrics = {
             'model_name': 'XLM-RoBERTa',
-            'accuracy': accuracy_score(y_test, predictions),
-            'precision': precision_score(y_test, predictions),
-            'recall': recall_score(y_test, predictions),
-            'f1_score': f1_score(y_test, predictions),
+            'accuracy': acc,
+            'precision': prec,
+            'recall': rec,
+            'f1_score': f1,
+            'macro_f1': macro_f1,
+            'spam_recall': spam_recall,
+            'roc_auc': roc_auc,
+            'pr_auc': pr_auc,
+            'best_threshold': best_threshold,
             'confusion_matrix': confusion_matrix(y_test, predictions).tolist(),
             'predictions': predictions,
             'probabilities': probabilities
@@ -416,6 +470,38 @@ def save_metrics_to_json(all_metrics, output_path='metrics.json'):
     
     print(f" Metrics saved to {output_path}")
 
+def save_thresholds(all_metrics, output_path='thresholds.json'):
+    """
+    Save best decision thresholds per model for use in the web UI.
+
+    Args:
+        all_metrics: List of metrics dictionaries
+        output_path: Output file path
+    """
+    print(f"\n Saving thresholds to {output_path}...")
+
+    # Map human model names to internal keys used in the web UI
+    name_to_key = {
+        'Logistic Regression': 'logistic_regression',
+        'LSTM': 'lstm',
+        'XLM-RoBERTa': 'xlm_roberta',
+    }
+
+    thresholds = {}
+    for metrics in all_metrics:
+        if metrics is None:
+            continue
+        model_name = metrics.get('model_name')
+        key = name_to_key.get(model_name)
+        if not key:
+            continue
+        thresholds[key] = float(metrics.get('best_threshold', 0.5))
+
+    with open(output_path, 'w') as f:
+        json.dump(thresholds, f, indent=2)
+
+    print(f" Thresholds saved to {output_path}")
+
 def save_metrics_to_csv(all_metrics, output_path='metrics_summary.csv'):
     """
     Save metrics summary to CSV file
@@ -491,6 +577,7 @@ def main():
     # Save metrics
     save_metrics_to_json(valid_metrics)
     save_metrics_to_csv(valid_metrics)
+    save_thresholds(valid_metrics)
     
     # Print final summary
     print("\n" + "="*80)

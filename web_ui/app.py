@@ -25,6 +25,8 @@ from functools import wraps
 from datetime import datetime, timedelta
 from collections import defaultdict
 import string
+import h5py
+import pickle
 
 warnings.filterwarnings('ignore')
 
@@ -48,6 +50,12 @@ class Config:
     MAX_TRANSFORMER_LENGTH = 512
     RATE_LIMIT_REQUESTS = 30  # requests per window
     RATE_LIMIT_WINDOW = 60  # seconds
+    # Default decision thresholds if none are provided by evaluate_models.py
+    DEFAULT_THRESHOLDS = {
+        'logistic_regression': 0.5,
+        'lstm': 0.5,
+        'xlm_roberta': 0.5,
+    }
 
 # Sample messages library
 SAMPLE_MESSAGES = {
@@ -304,6 +312,92 @@ model_metadata = {
 gibberish_detector = GibberishDetector()
 
 
+def load_thresholds() -> Dict[str, float]:
+    """Load per-model decision thresholds if available."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        thresholds_path = os.path.join(project_root, 'thresholds.json')
+        if os.path.exists(thresholds_path):
+            with open(thresholds_path, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    # Merge with defaults to avoid missing keys
+                    merged = Config.DEFAULT_THRESHOLDS.copy()
+                    for k, v in data.items():
+                        try:
+                            merged[k] = float(v)
+                        except (TypeError, ValueError):
+                            continue
+                    return merged
+    except Exception as e:
+        logger.error(f"Error loading thresholds: {e}")
+    return Config.DEFAULT_THRESHOLDS.copy()
+
+
+MODEL_THRESHOLDS = load_thresholds()
+
+
+class StandaloneTokenizer:
+    """
+    Minimal tokenizer compatible with pickled tensorflow.keras Tokenizer objects.
+    Supports the subset of features needed for inference (texts_to_sequences).
+    """
+    
+    def __init__(self):
+        self.word_index: Dict[str, int] = {}
+        self.index_word: Dict[int, str] = {}
+        self.word_counts = {}
+        self.word_docs = {}
+        self.document_count = 0
+        self.filters = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'
+        self.split = ' '
+        self.lower = True
+        self.char_level = False
+        self.oov_token = None
+        self.num_words = None
+        self._filter_map = None
+    
+    def texts_to_sequences(self, texts: List[str]) -> List[List[int]]:
+        if not isinstance(texts, (list, tuple)):
+            texts = [texts]
+        sequences = []
+        for text in texts:
+            tokens = self._tokenize(text)
+            seq = []
+            for token in tokens:
+                index = self.word_index.get(token)
+                if index is None:
+                    if self.oov_token is not None and self.oov_token in self.word_index:
+                        index = self.word_index[self.oov_token]
+                    else:
+                        continue
+                if self.num_words and index >= self.num_words:
+                    continue
+                seq.append(index)
+            sequences.append(seq)
+        return sequences
+    
+    def _tokenize(self, text: Any) -> List[str]:
+        if text is None:
+            return []
+        if not isinstance(text, str):
+            text = str(text)
+        if getattr(self, 'lower', True):
+            text = text.lower()
+        if getattr(self, 'char_level', False):
+            return list(text)
+        
+        filters = getattr(self, 'filters', self.filters)
+        split_char = getattr(self, 'split', self.split) or ' '
+        translate_map = getattr(self, '_filter_map', None)
+        if translate_map is None:
+            translate_map = str.maketrans({c: split_char for c in filters})
+            setattr(self, '_filter_map', translate_map)
+        text = text.translate(translate_map)
+        return [tok for tok in text.split(split_char) if tok]
+
+
 class LogisticRegressionModel:
     """Wrapper for Logistic Regression model."""
     
@@ -346,16 +440,18 @@ class LogisticRegressionModel:
             processed_message = self.preprocess_text(message)
             message_tfidf = self.vectorizer.transform([processed_message])
             
-            prediction = self.model.predict(message_tfidf)[0]
-            probabilities = self.model.predict_proba(message_tfidf)[0]
-            confidence = probabilities.max()
-            
+            prediction_proba = self.model.predict_proba(message_tfidf)[0]
+            spam_prob = float(prediction_proba[1])
+            ham_prob = float(prediction_proba[0])
+
+            threshold = MODEL_THRESHOLDS.get('logistic_regression', Config.DEFAULT_THRESHOLDS['logistic_regression'])
+            prediction = 1 if spam_prob >= threshold else 0
             return {
                 'prediction': int(prediction),
                 'label': 'SPAM' if prediction == 1 else 'HAM',
-                'confidence': float(confidence),
-                'spam_probability': float(probabilities[1]),
-                'ham_probability': float(probabilities[0])
+                'confidence': float(max(spam_prob, ham_prob)),
+                'spam_probability': spam_prob,
+                'ham_probability': ham_prob
             }
         except Exception as e:
             logger.error(f"Prediction error in Logistic Regression: {e}")
@@ -363,21 +459,34 @@ class LogisticRegressionModel:
 
 
 class LSTMModel:
-    """Wrapper for LSTM model."""
+    """Wrapper for the legacy LSTM model without requiring TensorFlow at runtime."""
     
     def __init__(self):
-        self.model = None
+        self.model = None  # retained for compatibility, not used
         self.tokenizer = None
         self.label_encoder = None
-        self.config = None
+        self.config = {}
         self.loaded = False
+        
+        # Numpy runtime weights
+        self.embedding_matrix = None
+        self.lstm_kernel = None
+        self.lstm_recurrent_kernel = None
+        self.lstm_bias = None
+        self.dense1_kernel = None
+        self.dense1_bias = None
+        self.dense2_kernel = None
+        self.dense2_bias = None
+        self.output_kernel = None
+        self.output_bias = None
+        
+        self.vocab_size = 0
+        self.lstm_units = 0
+        self.max_sequence_length = Config.MAX_LSTM_LENGTH
     
     def load(self):
-        """Load the trained LSTM model."""
+        """Load serialized artifacts and hydrate numpy weights."""
         try:
-            import tensorflow as tf
-            from tensorflow import keras
-            
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(script_dir)
             model_path = os.path.join(project_root, 'models', 'lstm', 'model_files', 'lstm_spam_model.h5')
@@ -385,19 +494,27 @@ class LSTMModel:
             label_encoder_path = os.path.join(project_root, 'models', 'lstm', 'model_files', 'label_encoder.pkl')
             config_path = os.path.join(project_root, 'models', 'lstm', 'model_files', 'model_config.pkl')
             
-            self.model = keras.models.load_model(model_path)
-            self.tokenizer = joblib.load(tokenizer_path)
+            self.tokenizer = self._load_tokenizer(tokenizer_path)
             self.label_encoder = joblib.load(label_encoder_path)
             
             if os.path.exists(config_path):
-                self.config = joblib.load(config_path)
+                loaded_config = joblib.load(config_path)
+                if isinstance(loaded_config, dict):
+                    self.config = loaded_config
             else:
                 self.config = {}
             
-            self.loaded = True
-            logger.info("✓ LSTM model loaded successfully")
+            max_len = self.config.get('max_length') or self.config.get('max_sequence_length') or Config.MAX_LSTM_LENGTH
+            try:
+                self.max_sequence_length = max(1, int(max_len))
+            except (TypeError, ValueError):
+                self.max_sequence_length = Config.MAX_LSTM_LENGTH
             
-            # Update metadata if available
+            self._load_weights_without_tensorflow(model_path)
+            
+            self.loaded = True
+            logger.info("✓ LSTM model loaded successfully (TensorFlow-free runtime)")
+            
             if 'metrics' in self.config:
                 self._update_metadata_from_config()
             else:
@@ -412,9 +529,55 @@ class LSTMModel:
             logger.error(f"✗ Error loading LSTM model: {e}")
             return False
     
+    def _load_weights_without_tensorflow(self, model_path: str):
+        """Extract layer weights from the saved Keras H5 file using h5py."""
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"LSTM weight file not found: {model_path}")
+        
+        with h5py.File(model_path, 'r') as f:
+            weights = f['model_weights']
+            
+            def read(dataset_path: List[str]) -> np.ndarray:
+                node = weights
+                for key in dataset_path:
+                    node = node[key]
+                return node[()].astype(np.float32)
+            
+            self.embedding_matrix = read(['embedding', 'sequential', 'embedding', 'embeddings'])
+            self.lstm_kernel = read(['lstm', 'sequential', 'lstm', 'lstm_cell', 'kernel'])
+            self.lstm_recurrent_kernel = read(['lstm', 'sequential', 'lstm', 'lstm_cell', 'recurrent_kernel'])
+            self.lstm_bias = read(['lstm', 'sequential', 'lstm', 'lstm_cell', 'bias'])
+            self.dense1_kernel = read(['dense_1', 'sequential', 'dense_1', 'kernel'])
+            self.dense1_bias = read(['dense_1', 'sequential', 'dense_1', 'bias'])
+            self.dense2_kernel = read(['dense_2', 'sequential', 'dense_2', 'kernel'])
+            self.dense2_bias = read(['dense_2', 'sequential', 'dense_2', 'bias'])
+            self.output_kernel = read(['output', 'sequential', 'output', 'kernel'])
+            self.output_bias = read(['output', 'sequential', 'output', 'bias'])
+        
+        self.vocab_size = self.embedding_matrix.shape[0]
+        self.lstm_units = self.lstm_recurrent_kernel.shape[0]
+    
+    def _load_tokenizer(self, tokenizer_path: str):
+        """Custom unpickler that maps tensorflow.keras classes to standalone Keras."""
+        if not os.path.exists(tokenizer_path):
+            raise FileNotFoundError(f"Tokenizer file not found: {tokenizer_path}")
+        
+        class LegacyTokenizerUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                if module in (
+                    'tensorflow.keras.preprocessing.text',
+                    'keras.preprocessing.text',
+                    'keras.src.legacy.preprocessing.text'
+                ) and name == 'Tokenizer':
+                    return StandaloneTokenizer
+                return super().find_class(module, name)
+        
+        with open(tokenizer_path, 'rb') as handle:
+            return LegacyTokenizerUnpickler(handle).load()
+    
     def _update_metadata_from_config(self):
         """Update metadata from config"""
-        metrics = self.config['metrics']
+        metrics = self.config.get('metrics', {})
         model_metadata['lstm'].update({
             'accuracy': metrics.get('accuracy', metrics.get('test_accuracy', model_metadata['lstm']['accuracy'])),
             'precision': metrics.get('precision', metrics.get('test_precision', model_metadata['lstm']['precision'])),
@@ -446,27 +609,36 @@ class LSTMModel:
         return text
     
     def predict(self, message: str) -> Dict[str, Any]:
-        """Predict spam probability for a message."""
+        """Predict spam probability for a message using numpy runtime."""
         if not self.loaded:
             return {'error': 'Model not loaded'}
         
         try:
-            from tensorflow.keras.preprocessing.sequence import pad_sequences
-            
             processed_message = self.preprocess_text(message)
-            sequence = self.tokenizer.texts_to_sequences([processed_message])
-            max_length = self.config.get('max_length', Config.MAX_LSTM_LENGTH)
-            padded_sequence = pad_sequences(sequence, maxlen=max_length, padding='post')
+            if not self.tokenizer:
+                raise RuntimeError("Tokenizer not loaded")
             
-            prediction_proba = self.model.predict(padded_sequence, verbose=0)[0][0]
-            spam_prob = float(prediction_proba)
-            ham_prob = float(1 - prediction_proba)
-            prediction = 1 if spam_prob > 0.5 else 0
+            sequences = self.tokenizer.texts_to_sequences([processed_message])
+            sequence = sequences[0] if sequences else []
+            padded_sequence, valid_length = self._prepare_sequence(sequence)
+            spam_prob = float(self._run_inference(padded_sequence, valid_length))
+
+            threshold = MODEL_THRESHOLDS.get('lstm', Config.DEFAULT_THRESHOLDS['lstm'])
+            ham_prob = float(1.0 - spam_prob)
+            prediction = int(spam_prob >= threshold)
             confidence = max(spam_prob, ham_prob)
+            
+            if self.label_encoder:
+                try:
+                    label = self.label_encoder.inverse_transform([prediction])[0]
+                except Exception:
+                    label = 'spam' if prediction == 1 else 'ham'
+            else:
+                label = 'spam' if prediction == 1 else 'ham'
             
             return {
                 'prediction': prediction,
-                'label': 'SPAM' if prediction == 1 else 'HAM',
+                'label': label.upper(),
                 'confidence': confidence,
                 'spam_probability': spam_prob,
                 'ham_probability': ham_prob
@@ -474,6 +646,68 @@ class LSTMModel:
         except Exception as e:
             logger.error(f"Prediction error in LSTM: {e}")
             return {'error': str(e)}
+    
+    def _prepare_sequence(self, sequence: List[int]) -> Tuple[np.ndarray, int]:
+        """Pad/truncate sequences to the configured max length."""
+        max_len = self.max_sequence_length or Config.MAX_LSTM_LENGTH
+        padded = np.zeros(max_len, dtype=np.int32)
+        if not sequence:
+            return padded, 0
+        
+        truncated = sequence[:max_len]
+        valid_length = len(truncated)
+        arr = np.array(truncated, dtype=np.int32)
+        if self.vocab_size:
+            arr = np.where((arr >= 0) & (arr < self.vocab_size), arr, 0)
+        padded[:valid_length] = arr
+        return padded, valid_length
+    
+    def _run_inference(self, padded_sequence: np.ndarray, valid_length: int) -> float:
+        """Execute the forward pass using numpy."""
+        if self.embedding_matrix is None or self.lstm_kernel is None:
+            raise RuntimeError("LSTM weights have not been loaded")
+        
+        embeddings = self.embedding_matrix[padded_sequence]
+        hidden_state = self._lstm_forward(embeddings, valid_length)
+        
+        x = np.dot(hidden_state, self.dense1_kernel) + self.dense1_bias
+        x = self._relu(x)
+        x = np.dot(x, self.dense2_kernel) + self.dense2_bias
+        x = self._relu(x)
+        logits = float(np.dot(x, self.output_kernel).squeeze() + self.output_bias.squeeze())
+        return float(self._sigmoid(logits))
+    
+    def _lstm_forward(self, embeddings: np.ndarray, valid_length: int) -> np.ndarray:
+        """Manual LSTM cell forward pass (single layer)."""
+        units = self.lstm_units
+        h = np.zeros(units, dtype=np.float32)
+        c = np.zeros(units, dtype=np.float32)
+        steps = valid_length if valid_length > 0 else embeddings.shape[0]
+        
+        for t in range(steps):
+            x_t = embeddings[t]
+            gates = (
+                np.dot(x_t, self.lstm_kernel) +
+                np.dot(h, self.lstm_recurrent_kernel) +
+                self.lstm_bias
+            )
+            i, f, g, o = np.split(gates, 4)
+            i = self._sigmoid(i)
+            f = self._sigmoid(f)
+            g = np.tanh(g)
+            o = self._sigmoid(o)
+            c = f * c + i * g
+            h = o * np.tanh(c)
+        
+        return h
+    
+    @staticmethod
+    def _sigmoid(x: np.ndarray) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-x))
+    
+    @staticmethod
+    def _relu(x: np.ndarray) -> np.ndarray:
+        return np.maximum(x, 0.0)
 
 
 class XLMRobertaModel:
@@ -588,21 +822,22 @@ class XLMRobertaModel:
                 logits = outputs.logits
                 probabilities = F.softmax(logits, dim=1)[0]
             
-            prediction = torch.argmax(probabilities).item()
-            confidence = float(probabilities[prediction])
-            
-            id_to_label = {v: k for k, v in self.label_mapping.items()}
-            label_text = id_to_label.get(prediction, 'UNKNOWN')
+            prediction_idx = torch.argmax(probabilities).item()
+            confidence = float(probabilities[prediction_idx])
             
             spam_idx = self.label_mapping.get('spam', 1)
             ham_idx = self.label_mapping.get('ham', 0)
             
             spam_prob = float(probabilities[spam_idx]) if spam_idx < len(probabilities) else 0.0
             ham_prob = float(probabilities[ham_idx]) if ham_idx < len(probabilities) else 0.0
+
+            threshold = MODEL_THRESHOLDS.get('xlm_roberta', Config.DEFAULT_THRESHOLDS['xlm_roberta'])
+            prediction = int(spam_prob >= threshold)
+            label_text = 'SPAM' if prediction == 1 else 'HAM'
             
             return {
                 'prediction': prediction,
-                'label': label_text.upper(),
+                'label': label_text,
                 'confidence': confidence,
                 'spam_probability': spam_prob,
                 'ham_probability': ham_prob
