@@ -13,6 +13,14 @@ license: mit
 
 An AI-powered spam detection system specifically trained and evaluated on Taglish (Tagalog-English code-switched) and English SMS messages (7,507 total records). The project evaluates and compares three distinct machine learning paradigms—Traditional ML (TF-IDF + Logistic Regression), Deep Learning (LSTM), and Modern Multilingual Transformers (XLM-RoBERTa)—serving them via a unified Flask web interface and API.
 
+![Taglish Spam Detection Interface](assets/screenshots/landing_page.png)
+
+---
+
+## 🎥 Live Interactive Demo
+
+![Spam, Ham, and Gibberish Detection Demo](assets/screenshots/spam_detect_all_demo.gif)
+
 ---
 
 ## 📊 Model Performance Comparison
@@ -45,7 +53,10 @@ taglish-spam-detection/
 ├── metrics.json                    # Sourced benchmark metrics across all models
 ├── thresholds.json                 # Tuned F1-optimal decision thresholds
 ├── assets/
-│   └── model_comparison.png        # Benchmark evaluation chart
+│   ├── model_comparison.png        # Benchmark evaluation chart
+│   └── screenshots/                # Application UI screenshots & demo GIFs
+│       ├── landing_page.png
+│       └── spam_detect_all_demo.gif
 ├── dataset/
 │   ├── final_spam_ham_dataset.csv  # 7,507 labeled Taglish/English SMS dataset
 │   └── build_final_dataset.py      # Dataset preparation script
