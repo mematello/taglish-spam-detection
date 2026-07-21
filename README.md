@@ -1,14 +1,3 @@
----
-title: Taglish Spam Detection
-emoji: 🛡️
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
----
-
 # Taglish & English SMS Spam Detection System
 
 An AI-powered spam detection system specifically trained and evaluated on Taglish (Tagalog-English code-switched) and English SMS messages (7,507 total records). The project evaluates and compares three distinct machine learning paradigms—Traditional ML (TF-IDF + Logistic Regression), Deep Learning (LSTM), and Modern Multilingual Transformers (XLM-RoBERTa)—serving them via a unified Flask web interface and API.
