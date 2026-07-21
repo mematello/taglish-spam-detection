@@ -1,0 +1,11 @@
+.git
+__pycache__
+venv/
+.venv/
+presentation_viz/
+dataset/unprepared/
+models/xlm-roberta/logs/
+models/xlm-roberta/results/
+models/lstm/model_files/best_model_checkpoint.h5
+chapter4_results.txt
+*.png

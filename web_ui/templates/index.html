@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taglish Spam Detection</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Spam Detection</h1>
+            <p>Advanced AI-powered spam detection for English and Filipino messages using three different models</p>
+        </div>
+
+        <div class="input-section">
+            <label class="input-label">
+                Enter your message
+                <span class="char-counter" id="charCounter">0 / 5000</span>
+            </label>
+            <form id="spamForm">
+                <textarea 
+                    id="messageInput" 
+                    placeholder="Type or paste your message here..."
+                    maxlength="5000"
+                    required
+                ></textarea>
+                
+                <div class="sample-messages">
+                    <div class="sample-header">📝 Try sample messages:</div>
+                    <div class="sample-grid" id="sampleGrid"></div>
+                </div>
+                
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    🔍 Check for Spam
+                </button>
+            </form>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="color: #86868b;">Analyzing with all models...</p>
+            </div>
+        </div>
+
+        <div class="alert alert-gibberish" id="gibberishAlert">
+            <strong>⚠️ Gibberish Detected!</strong>
+            <span id="gibberishMessage"></span>
+        </div>
+        
+        <div class="alert alert-error" id="errorAlert">
+            <strong>❌ Error:</strong>
+            <span id="errorMessage"></span>
+        </div>
+
+        <!-- Gibberish Detection Modal Dialog -->
+        <div class="modal-overlay" id="gibberishModal">
+            <div class="modal-dialog">
+                <div class="modal-header">
+                    <div class="modal-icon">⚠️</div>
+                    <h2 class="modal-title">Invalid Input Detected</h2>
+                </div>
+                <div class="modal-body">
+                    <strong>What you entered is invalid.</strong>
+                    <p id="gibberishModalMessage"></p>
+                    <p style="margin-top: 16px; color: #f5f5f7;">Please type a valid spam or ham sentence with recognizable words.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal btn-modal-primary" id="gibberishModalOk">OK, I Understand</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <h2 class="results-header">📊 Detection Results</h2>
+            <div class="final-verdict" id="finalVerdict"></div>
+
+            <div class="models-grid" id="modelsGrid"></div>
+
+            <div class="comparison-section">
+                <h3 class="comparison-header">📈 Model Performance Comparison</h3>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>Accuracy</th>
+                                <th>Precision</th>
+                                <th>Recall</th>
+                                <th>F1-Score</th>
+                                <th>Training Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metricsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
